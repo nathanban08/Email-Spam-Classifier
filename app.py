@@ -3,10 +3,10 @@ import os
 from pathlib import Path
 
 import pandas as pd
-from flask import Flask, jsonify, redirect, request, send_from_directory
+from flask import Flask, jsonify, redirect, request, send_from_directory, session
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
@@ -14,11 +14,21 @@ from sklearn.model_selection import train_test_split
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 APP_DIR = Path(__file__).resolve().parent
-CREDENTIALS_PATH = APP_DIR / 'credentials.json'
 TOKEN_PATH = APP_DIR / 'token.json'
 DATA_PATH = APP_DIR / 'spam_Emails_data.csv'
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key')  # Set in Render env vars
+
+CLIENT_CONFIG = {
+    "web": {
+        "client_id": os.environ.get('GOOGLE_CLIENT_ID'),
+        "client_secret": os.environ.get('GOOGLE_CLIENT_SECRET'),
+        "redirect_uris": [os.environ.get('REDIRECT_URI', 'http://localhost:5000/oauth2callback')],
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token"
+    }
+}
 
 def load_credentials():
     if TOKEN_PATH.exists():
@@ -110,8 +120,24 @@ def index():
 
 @app.route('/connect')
 def connect():
-    flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIALS_PATH), SCOPES)
-    creds = flow.run_local_server(port=0)
+    flow = Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES)
+    flow.redirect_uri = CLIENT_CONFIG['web']['redirect_uris'][0]
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        include_granted_scopes='true'
+    )
+    session['state'] = state
+    return redirect(authorization_url)
+
+
+@app.route('/oauth2callback')
+def oauth2callback():
+    state = session.get('state')
+    flow = Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES, state=state)
+    flow.redirect_uri = CLIENT_CONFIG['web']['redirect_uris'][0]
+    authorization_response = request.url
+    flow.fetch_token(authorization_response=authorization_response)
+    creds = flow.credentials
     save_credentials(creds)
     return redirect('/')
 
@@ -174,4 +200,5 @@ def api_predict():
 
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5000, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
