@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Email Spam Detector</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f3f4f6; color: #111827; }
+    header { background: #1f2937; color: #f9fafb; padding: 24px 32px; text-align: center; }
+    main { max-width: 980px; margin: 24px auto; padding: 0 20px; }
+    .hero { margin-bottom: 24px; }
+    .hero h1 { margin: 0 0 12px; font-size: 2.4rem; }
+    .hero p { margin: 0; line-height: 1.7; }
+    .button-group { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0; }
+    .button, button { border: none; border-radius: 8px; padding: 14px 20px; cursor: pointer; font-size: 1rem; }
+    .button { background: #2563eb; color: #fff; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+    .button.secondary { background: #4b5563; }
+    .card { background: #ffffff; border-radius: 16px; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); padding: 24px; margin-bottom: 24px; }
+    .card h2 { margin-top: 0; }
+    textarea { width: 100%; min-height: 120px; border-radius: 12px; border: 1px solid #d1d5db; padding: 14px; font-size: 1rem; }
+    .email-list { list-style: none; padding: 0; margin: 0; }
+    .email-item { padding: 18px 20px; border-bottom: 1px solid #e5e7eb; }
+    .email-item:last-child { border-bottom: none; }
+    .email-item strong { display: block; margin-bottom: 8px; }
+    .status { margin-top: 12px; font-size: 0.95rem; }
+    .email-prediction { margin-top: 8px; font-weight: 600; }
+    .prediction-spam { color: #dc2626; }
+    .prediction-real { color: #047857; }
+    @media (max-width: 640px) { .button-group { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Email Spam Detector</h1>
+    <p>Connect to Gmail, fetch your latest emails, and see which ones the spam model labels as spam or real.</p>
+  </header>
+  <main>
+    <section class="card hero">
+      <div class="button-group">
+        <a class="button" href="/connect">Connect Gmail</a>
+        <button class="button secondary" onclick="fetchEmails()">Fetch Latest Emails</button>
+      </div>
+      <div class="status" id="status">Status: Ready</div>
+    </section>
+
+    <section class="card">
+      <h2>Manual Spam Prediction</h2>
+      <p>Paste an email body or subject line below, then click Predict.</p>
+      <textarea id="manualText" placeholder="Enter email text here..."></textarea>
+      <div class="button-group">
+        <button class="button" onclick="predictText()">Predict</button>
+      </div>
+      <div class="status" id="predictResult"></div>
+    </section>
+
+    <section class="card">
+      <h2>Latest Gmail Results</h2>
+      <ul class="email-list" id="emailList"></ul>
+    </section>
+  </main>
+
+  <script>
+    function setStatus(message, isError = false) {
+      const status = document.getElementById('status');
+      status.textContent = 'Status: ' + message;
+      status.style.color = isError ? '#b91c1c' : '#111827';
+    }
+
+    function setPredictResult(message, isError = false) {
+      const output = document.getElementById('predictResult');
+      output.textContent = message;
+      output.style.color = isError ? '#b91c1c' : '#111827';
+    }
+
+    async function fetchEmails() {
+      setStatus('Fetching latest messages...');
+      document.getElementById('emailList').innerHTML = '';
+
+      try {
+        const response = await fetch('/api/emails');
+        const data = await response.json();
+
+        if (!response.ok) {
+          const message = data?.message || 'Unable to fetch emails. Connect Gmail first.';
+          setStatus(message, true);
+          return;
+        }
+
+        if (!data.emails.length) {
+          setStatus('No recent emails returned from Gmail.');
+          return;
+        }
+
+        const list = document.getElementById('emailList');
+        data.emails.forEach(email => {
+          const li = document.createElement('li');
+          li.className = 'email-item';
+          li.innerHTML = `
+            <strong>${email.subject}</strong>
+            <div>From: ${email.sender}</div>
+            <div>Preview: ${email.preview}</div>
+            <div class="email-prediction ${email.prediction === 'Spam' ? 'prediction-spam' : 'prediction-real'}">
+              ${email.prediction} · Confidence: ${email.confidence}
+            </div>
+          `;
+          list.appendChild(li);
+        });
+
+        setStatus('Latest emails loaded.');
+      } catch (error) {
+        setStatus('Error loading emails. Check the server and Gmail connection.', true);
+      }
+    }
+
+    async function predictText() {
+      const text = document.getElementById('manualText').value.trim();
+      if (!text) {
+        setPredictResult('Please enter some email text to predict.', true);
+        return;
+      }
+
+      setPredictResult('Running prediction...');
+
+      try {
+        const response = await fetch('/api/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          setPredictResult(data?.message || 'Prediction failed.', true);
+          return;
+        }
+
+        setPredictResult(`Prediction: ${data.prediction} · Confidence: ${data.confidence}`);
+      } catch (error) {
+        setPredictResult('Prediction request failed. Is the server running?', true);
+      }
+    }
+  </script>
+</body>
+</html>
