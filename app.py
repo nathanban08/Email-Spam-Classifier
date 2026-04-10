@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 APP_DIR = Path(__file__).resolve().parent
 TOKEN_PATH = APP_DIR / 'token.json'
-DATA_PATH = APP_DIR / 'spam_Emails_data.csv'
+DATA_PATH = APP_DIR / 'spam_or_not_spam.csv'
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key')  # Set in Render env vars
@@ -86,12 +86,12 @@ def get_email_header(msg, name):
 
 def build_model():
     df = pd.read_csv(DATA_PATH)
-    df = df.dropna(subset=['text'])
-    df = df[df['label'].isin(['Ham', 'Spam'])]
+    df = df.dropna(subset=['email'])
+    df = df[df['label'].isin([0, 1])]
 
     x_train_text, _, y_train, _ = train_test_split(
-        df['text'],
-        df['label'].map({'Ham': 0, 'Spam': 1}),
+        df['email'],
+        df['label'],
         test_size=0.2,
         random_state=42,
     )
